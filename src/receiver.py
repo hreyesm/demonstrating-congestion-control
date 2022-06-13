@@ -1,8 +1,8 @@
-import sys
 import json
-import socket
 import select
-from typing import List, Dict, Tuple
+import socket
+import sys
+from typing import Dict, List, Tuple
 
 READ_FLAGS = select.POLLIN | select.POLLPRI
 WRITE_FLAGS = select.POLLOUT
@@ -13,6 +13,7 @@ ALL_FLAGS = READ_FLAGS | WRITE_FLAGS | ERR_FLAGS
 # This is set to a large enough value to
 # accomodate any reasonable congestion window size.
 RECEIVE_WINDOW = 100000
+
 
 class Peer(object):
     def __init__(self, port: int, window_size: int) -> None:
@@ -25,36 +26,41 @@ class Peer(object):
         self.window: List[Dict] = []
 
     def window_has_no_missing_segments(self):
-        seq_nums = [seg['seq_num'] for seg in self.window]
-        return all([seq_nums[i] + 1 ==  seq_nums[i+1] for i in range(len(seq_nums[:-1]))])
+        seq_nums = [seg["seq_num"] for seg in self.window]
+        return all(
+            [seq_nums[i] + 1 == seq_nums[i + 1] for i in range(len(seq_nums[:-1]))]
+        )
 
     def process_window(self):
-        seq_nums = [seg['seq_num'] for seg in self.window]
         if self.window_has_no_missing_segments():
-            self.high_water_mark = max(self.high_water_mark, self.window[-1]['seq_num'])
-            self.window = self.window[-1:]
+            self.high_water_mark = max(self.high_water_mark, self.window[-1]["seq_num"])
+            self.window = self.window[-1:]  # Get last element as list
         elif len(self.window) == self.window_size:
-            self.window = self.window[:-1]
+            self.window = self.window[:-1]  # Get all list elements except last one
             print("chopping window")
 
     def add_segment(self, ack: Dict):
-        seq_num = ack['seq_num']
+        seq_num = ack["seq_num"]
 
-        if all([seq_num != item['seq_num'] for item in self.window]):
-            self.window.append(ack)
-        self.window.sort(key=lambda a: a['seq_num'])
+        # If the received segment is new, add it to the window
+        if all([seq_num != item["seq_num"] for item in self.window]):
+            self.window.append(ack)  # Contains current segment ACK and last segment ACK
+        self.window.sort(key=lambda a: a["seq_num"])
 
         self.process_window()
 
     def next_ack(self):
         for i in range(len(self.window[:-1])):
-            if self.window[i + 1]['seq_num'] > self.window[i]['seq_num'] + 1:
+            if self.window[i + 1]["seq_num"] > self.window[i]["seq_num"] + 1:
                 return self.window[i]
-        else:
+        else:  # Segments have been received in order
             return self.window[-1]
 
+
 class Receiver(object):
-    def __init__(self, peers: List[Tuple[str, int]], window_size: int = RECEIVE_WINDOW) -> None:
+    def __init__(
+        self, peers: List[Tuple[str, int]], window_size: int = RECEIVE_WINDOW
+    ) -> None:
         self.recv_window_size = window_size
         self.peers: Dict[Tuple, Peer] = {}
         for peer in peers:
@@ -74,9 +80,9 @@ class Receiver(object):
         """Construct a serialized ACK that acks a serialized datagram."""
         data = json.loads(serialized_data)
         return {
-          'seq_num': data['seq_num'],
-          'send_ts': data['send_ts'],
-          'ack_bytes': len(serialized_data)
+            "seq_num": data["seq_num"],
+            "send_ts": data["send_ts"],
+            "ack_bytes": len(serialized_data),
         }
 
     def perform_handshakes(self):
@@ -93,32 +99,30 @@ class Receiver(object):
 
         while len(unconnected_peers) > 0:
             for peer in unconnected_peers:
-                self.sock.sendto(json.dumps({'handshake': True}).encode(), peer)
+                self.sock.sendto(json.dumps({"handshake": True}).encode(), peer)
 
             events = self.poller.poll(TIMEOUT)
 
             if not events:  # timed out
                 retry_times += 1
                 if retry_times > 10:
-                    sys.stderr.write(
-                        '[receiver] Handshake failed after 10 retries\n')
+                    sys.stderr.write("[receiver] Handshake failed after 10 retries\n")
                     return
                 else:
-                    sys.stderr.write(
-                        '[receiver] Handshake timed out and retrying...\n')
+                    sys.stderr.write("[receiver] Handshake timed out and retrying...\n")
                     continue
 
             for fd, flag in events:
                 assert self.sock.fileno() == fd
 
                 if flag & ERR_FLAGS:
-                    sys.exit('Channel closed or error occurred')
+                    sys.exit("Channel closed or error occurred")
 
                 if flag & READ_FLAGS:
                     msg, addr = self.sock.recvfrom(1600)
 
                     if addr in unconnected_peers:
-                        if json.loads(msg.decode()).get('handshake'):
+                        if json.loads(msg.decode()).get("handshake"):
                             unconnected_peers.remove(addr)
 
     def run(self):
@@ -131,11 +135,11 @@ class Receiver(object):
                 peer = self.peers[addr]
 
                 data = json.loads(serialized_data)
-                seq_num = data['seq_num']
+                seq_num = data["seq_num"]
                 if seq_num > peer.high_water_mark:
                     ack = self.construct_ack(serialized_data)
                     peer.add_segment(ack)
-                    print(len(peer.window))
+                    # print(len(peer.window))
 
                     if peer.next_ack() is not None:
                         self.sock.sendto(json.dumps(peer.next_ack()).encode(), addr)

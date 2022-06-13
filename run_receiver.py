@@ -6,11 +6,13 @@ from src.receiver import Receiver
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument('ip_port_pairs', nargs='*')
+    parser.add_argument("ip_port_pairs", nargs="*")
     args = parser.parse_args()
     peers = args.ip_port_pairs
 
-    receiver = Receiver([(peers[i], int(peers[i+1])) for i in range(0, len(peers), 2)])
+    receiver = Receiver(
+        [(peers[i], int(peers[i + 1])) for i in range(0, len(peers), 2)]
+    )
 
     try:
         receiver.perform_handshakes()
@@ -21,5 +23,5 @@ def main() -> None:
         receiver.cleanup()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
