@@ -45,7 +45,6 @@ pexpect==4.8.0
 pickleshare==0.7.5
 Pillow==8.4.0
 pipenv==2022.4.20
-pkg_resources==0.0.0
 platformdirs==2.4.0
 prometheus-client==0.14.1
 prompt-toolkit==3.0.29
